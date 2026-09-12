@@ -1,8 +1,22 @@
-/*
- * Temporary stability entrypoint.
- * The production application logic is intentionally preserved until the full
- * monolithic script is split mechanically, so behavior is not changed by a
- * partial refactor.
- */
-window.addEventListener('error',e=>console.error('[ARCHIVE]',e.error||e.message));
-window.addEventListener('unhandledrejection',e=>console.error('[ARCHIVE]',e.reason));
+import {loadEvents,saveEvent,removeEvent} from './firebase.js';
+const $=s=>document.querySelector(s);const $$=s=>[...document.querySelectorAll(s)];
+const state={events:[],month:new Date(new Date().getFullYear(),new Date().getMonth(),1),filter:'전체',search:'',theme:localStorage.getItem('clow-theme')||'dark'};
+const cats=['전체','공식','방송','콘텐츠','기타'];
+const pad=n=>String(n).padStart(2,'0'); const key=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),1800)}
+function visibleEvents(){const q=state.search.toLowerCase();return state.events.filter(e=>(state.filter==='전체'||e.category===state.filter)&&(!q||[e.title,e.place,e.description,e.category].join(' ').toLowerCase().includes(q)))}
+function renderNav(){const nav=$('#desktop-nav');nav.innerHTML=cats.slice(0,4).map(c=>`<button class="${state.filter===c?'active':''}" data-filter="${c}">${c==='전체'?'전체 일정':c}</button>`).join('');$$('[data-filter]').forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;render()})}
+function renderFilters(){ $('#filters').innerHTML=cats.map(c=>`<button class="filter ${state.filter===c?'active':''}" data-filter="${c}">${c}</button>`).join('');$$('#filters [data-filter]').forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;render()}); }
+function renderCalendar(){const y=state.month.getFullYear(),m=state.month.getMonth(),first=new Date(y,m,1),start=new Date(y,m,1-first.getDay()),today=key(new Date()),ev=visibleEvents();const cells=[];for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const day=key(d);const list=ev.filter(e=>e.date===day);cells.push(`<div class="day ${d.getMonth()!==m?'muted':''} ${day===today?'today':''}"><div class="day-number">${d.getDate()}</div>${list.slice(0,5).map(e=>`<button class="event" data-id="${e.id}"><span class="time">${e.time||''}</span><span class="title">${escapeHtml(e.title)}</span></button>`).join('')}</div>`)}return `<div class="month-head"><h2>${y}.${pad(m+1)}</h2><div class="month-actions"><button id="prev" aria-label="이전 달">‹</button><button id="today" aria-label="오늘">●</button><button id="next" aria-label="다음 달">›</button></div></div><div class="calendar"><div class="weekday">일</div><div class="weekday">월</div><div class="weekday">화</div><div class="weekday">수</div><div class="weekday">목</div><div class="weekday">금</div><div class="weekday">토</div>${cells.join('')}</div>`}
+function escapeHtml(v=''){return v.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function render(){document.documentElement.dataset.theme=state.theme;localStorage.setItem('clow-theme',state.theme);renderNav();renderFilters();$('#content').innerHTML=renderCalendar();$('#prev').onclick=()=>moveMonth(-1);$('#next').onclick=()=>moveMonth(1);$('#today').onclick=()=>{state.month=new Date(new Date().getFullYear(),new Date().getMonth(),1);render()};$$('.event').forEach(b=>b.onclick=()=>openModal(b.dataset.id));$('#theme-btn').textContent=state.theme==='dark'?'☀':'☾';$('#mobile-theme').textContent=$('#theme-btn').textContent}
+function moveMonth(n){state.month=new Date(state.month.getFullYear(),state.month.getMonth()+n,1);render()}
+function openModal(id=null){const e=state.events.find(x=>x.id===id)||{};$('#modal-title').textContent=id?'일정 수정':'일정 추가';$('#event-id').value=id||'';$('#event-date').value=e.date||key(new Date());$('#event-time').value=e.time||'';$('#event-title').value=e.title||'';$('#event-category').value=e.category||'공식';$('#event-place').value=e.place||'';$('#event-description').value=e.description||'';$('#delete-btn').classList.toggle('hidden',!id);$('#form-status').textContent='';$('#modal').classList.remove('hidden');setTimeout(()=>$('#event-title').focus(),30)}
+function closeModal(){$('#modal').classList.add('hidden')}
+$('#event-form').addEventListener('submit',async e=>{e.preventDefault();const btn=e.submitter;btn.disabled=true;$('#form-status').textContent='저장 중…';const data={date:$('#event-date').value,time:$('#event-time').value,title:$('#event-title').value,category:$('#event-category').value,place:$('#event-place').value,description:$('#event-description').value};try{const id=$('#event-id').value;const saved=await saveEvent(data,id||null);if(id)state.events=state.events.map(x=>x.id===id?saved:x);else state.events.push(saved);closeModal();render();toast('저장했어');}catch(err){console.error(err);$('#form-status').textContent='저장에 실패했어. Firebase 연결과 권한을 확인해줘.'}finally{btn.disabled=false}});
+$('#delete-btn').onclick=async()=>{const id=$('#event-id').value;if(!id||!confirm('이 일정을 삭제할까?'))return;try{await removeEvent(id);state.events=state.events.filter(x=>x.id!==id);closeModal();render();toast('삭제했어')}catch(e){console.error(e);$('#form-status').textContent='삭제에 실패했어.'}};
+$$('[data-close-modal]').forEach(x=>x.onclick=closeModal);$('#modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+$('#search').addEventListener('input',e=>{clearTimeout(state.searchTimer);state.searchTimer=setTimeout(()=>{state.search=e.target.value.trim();render()},120)});
+function toggleTheme(){state.theme=state.theme==='dark'?'light':'dark';render()}$('#theme-btn').onclick=toggleTheme;$('#mobile-theme').onclick=toggleTheme;$('#add-btn').onclick=()=>openModal();$('#admin-btn').onclick=()=>openModal();
+async function init(){try{state.events=await loadEvents();render();}catch(e){console.error(e);render();$('#content').insertAdjacentHTML('afterbegin','<div class="empty">일정 데이터를 불러오지 못했어.<br>오프라인이거나 Firebase 권한을 확인해줘.</div>');}}
+init();
