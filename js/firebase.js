@@ -1,6 +1,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-
-const firebaseConfig={apiKey:'AIzaSyAA6mbdYfLrrgCJjN47PX91_mU7I53RiBs',authDomain:'site-c67b4.firebaseapp.com',projectId:'site-c67b4',storageBucket:'site-c67b4.firebasestorage.app',messagingSenderId:'744761377245',appId:'1:744761377245:web:3ddaee14f184716eeef634'};
-const app=initializeApp(firebaseConfig);const db=getFirestore(app);
-window.__db=db;window.__fb={collection,addDoc,getDocs,doc,updateDoc,deleteDoc,query};window.dispatchEvent(new Event('fb-ready'));
+import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+const config={apiKey:'AIzaSyAA6mbdYfLrrgCJjN47PX91_mU7I53RiBs',authDomain:'site-c67b4.firebaseapp.com',projectId:'site-c67b4',storageBucket:'site-c67b4.firebasestorage.app',messagingSenderId:'744761377245',appId:'1:744761377245:web:3ddaee14f184716eeef634'};
+const db=getFirestore(initializeApp(config)); const ref=collection(db,'schedules'); const clean=v=>v==null?'':String(v).trim();
+export async function loadEvents(){try{const s=await getDocs(query(ref,orderBy('date','asc')));return s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){console.warn('[CLOW] ordered query failed',e);const s=await getDocs(ref);return s.docs.map(d=>({id:d.id,...d.data()}));}}
+export async function saveEvent(event,id=null){const data={date:clean(event.date),time:clean(event.time),title:clean(event.title),category:clean(event.category)||'기타',place:clean(event.place),description:clean(event.description),updatedAt:Date.now()};if(id){await updateDoc(doc(db,'schedules',id),data);return{id,...data};}const d=await addDoc(ref,{...data,createdAt:Date.now()});return{id:d.id,...data};}
+export async function removeEvent(id){if(!id)throw new Error('missing id');await deleteDoc(doc(db,'schedules',id));}
